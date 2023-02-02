@@ -1,0 +1,161 @@
+---
+
+#
+# deploy-graylog-server
+#
+# This task configures a CentOS 7 system to be a graylog logging server.
+#
+
+# Make sure the distro is running CentOS 7
+- name: Check distro for CentOS 7 compatibility
+  fail:
+    msg="You're not running a supported distro for the Graylog server (CentOS 7)"
+  when: (ansible_distribution != "CentOS" and ansible_distribution_major_version != "7")
+
+# All tasks are grouped in a block/when statement so that this only runs against a CentOS 7 system.
+- block:
+
+#############################
+# Pre-Reqs
+#############################
+
+  # Set selinux to permissive
+  - selinux:
+      policy: targeted
+      state: permissive
+
+  - name: Ensure firewalld is disabled and stopped
+    service:
+      name: firewalld
+      state: stopped
+      enabled: no
+
+#############################
+# Repo setups
+#############################
+
+  - name: Copy mongodb repo file to server
+    copy:
+      src: files/mongodb-org-3.2.repo
+      dest: /etc/yum.repos.d/mongodb-org-3.2.repo
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy elasticsearch repo file to server
+    copy:
+      src: files/elasticsearch.repo
+      dest: /etc/yum.repos.d/elasticsearch.repo
+      owner: root
+      group: root
+      mode: 0644
+
+  - name: Copy graylog repo file to server
+    copy:
+      src: files/graylog.repo
+      dest: /etc/yum.repos.d/graylog.repo
+      owner: root
+      group: root
+      mode: 0644
+
+#############################
+# Package installs
+#############################
+
+  - name: Install packages
+    yum:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - java-1.8.0-openjdk-headless.x86_64
+      - mongodb-org
+      - elasticsearch
+      - graylog-server
+      - httpd
+      - mod_ssl
+      - dnsmasq
+
+#############################
+# Graylog config setups
+#############################
+
+  - name: Append cluster name to elasticsearch config file
+    lineinfile:
+      path: /etc/elasticsearch/elasticsearch.yml
+      line: 'cluster.name: graylog'
+      state: present
+      insertafter: EOF
+    notify: restart elasticsearch
+
+  - name: Copy dnsmasq config file to server
+    copy:
+      src: files/dns.conf
+      dest: /etc/NetworkManager/conf.d/dns.conf
+      owner: root
+      group: root
+      mode: 0644
+    notify: restart NetworkManager
+
+  - name: Copy dnsmasq cache config file to server
+    copy:
+      src: files/cache.conf
+      dest: /etc/NetworkManager/dnsmasq.d/cache.conf
+      owner: root
+      group: root
+      mode: 0644
+    notify: restart NetworkManager
+
+  - name: Copy graylog apache config file to server
+    template:
+      src: files/graylog.conf
+      dest: /etc/httpd/conf.d/graylog.conf
+      owner: root
+      group: root
+      mode: 0644
+    notify: restart httpd
+
+  - name: Copy graylog server config file to server
+    template:
+      src: files/server.conf
+      dest: /etc/graylog/server/server.conf
+      owner: root
+      group: root
+      mode: 0644
+    no_log: true
+    notify: restart graylog-server
+
+#############################
+# Finish up
+#############################
+
+  - name: Ensure mongod is running and enabled
+    service:
+      name: mongod
+      state: started
+      enabled: yes
+
+  - name: Ensure elasticsearch is running and enabled
+    service:
+      name: elasticsearch
+      state: started
+      enabled: yes
+
+  - name: Ensure NetworkManager is running and enabled
+    service:
+      name: NetworkManager
+      state: started
+      enabled: yes
+
+  - name: Ensure graylog-server is running and enabled
+    service:
+      name: graylog-server
+      state: started
+      enabled: yes
+
+  - name: Ensure httpd is running and enabled
+    service:
+      name: httpd
+      state: started
+      enabled: yes
+
+  when: (ansible_distribution == "CentOS" and ansible_distribution_major_version == "7")

@@ -1,0 +1,19 @@
+---
+
+#
+# deploy-graylog-server.yml
+#
+# This playbook configures the target system to be a graylog logging server.
+#
+
+- hosts: graylog-server
+  remote_user: root
+  roles:
+    - deploy-graylog-server
+  vars:
+    # The secret used to secure/pepper the stored user passwords
+    password_secret:
+
+    # You MUST specify a hash password for the root user (which you only need to initially set up the
+    # system and in case you lose connectivity to your authentication backend)
+    root_password_sha2:
